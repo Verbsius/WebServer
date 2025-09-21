@@ -14,19 +14,23 @@ WebServer::WebServer(
             const char* dbName, int connPoolNum, int threadNum,
             bool openLog, int logLevel, int logQueSize):
             port_(port), openLinger_(OptLinger), timeoutMS_(timeoutMS), isClose_(false),
-            timer_(new HeapTimer()), threadpool_(new ThreadPool(threadNum)), epoller_(new Epoller())
+            timer_(new HeapTimer()), threadpool_(new ThreadPool(threadNum)), epoller_(new Epoller()) // 初始化线程池，epoller
     {
     srcDir_ = getcwd(nullptr, 256);
     assert(srcDir_);
     strncat(srcDir_, "/resources/", 16);
     HttpConn::userCount = 0;
     HttpConn::srcDir = srcDir_;
-    SqlConnPool::Instance()->Init("localhost", sqlPort, sqlUser, sqlPwd, dbName, connPoolNum);
+
+    // 初始化数据库连接池
+    SqlConnPool::Instance()->Init("localhost", sqlPort, sqlUser, sqlPwd, dbName, connPoolNum); //单例模式
 
     InitEventMode_(trigMode);
+    // 初始化socket
     if(!InitSocket_()) { isClose_ = true;}
 
     if(openLog) {
+        // 初始化日志
         Log::Instance()->init(logLevel, "./log", ".log", logQueSize);
         if(isClose_) { LOG_ERROR("========== Server init error!=========="); }
         else {
@@ -77,26 +81,32 @@ void WebServer::InitEventMode_(int trigMode) {
 void WebServer::Start() {
     int timeMS = -1;  /* epoll wait timeout == -1 无事件将阻塞 */
     if(!isClose_) { LOG_INFO("========== Server start =========="); }
+    
     while(!isClose_) {
         if(timeoutMS_ > 0) {
             timeMS = timer_->GetNextTick();
         }
+        // 返回就绪事件数，包括监听socket和连接socket上
         int eventCnt = epoller_->Wait(timeMS);
         for(int i = 0; i < eventCnt; i++) {
             /* 处理事件 */
             int fd = epoller_->GetEventFd(i);
             uint32_t events = epoller_->GetEvents(i);
+            // 处理新的客户连接
             if(fd == listenFd_) {
                 DealListen_();
             }
+            // 关闭连接
             else if(events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
                 assert(users_.count(fd) > 0);
                 CloseConn_(&users_[fd]);
             }
+            // 处理读事件
             else if(events & EPOLLIN) {
                 assert(users_.count(fd) > 0);
                 DealRead_(&users_[fd]);
             }
+            // 处理写事件
             else if(events & EPOLLOUT) {
                 assert(users_.count(fd) > 0);
                 DealWrite_(&users_[fd]);
@@ -138,6 +148,7 @@ void WebServer::DealListen_() {
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
     do {
+        // 创建一个新的连接socket
         int fd = accept(listenFd_, (struct sockaddr *)&addr, &len);
         if(fd <= 0) { return;}
         else if(HttpConn::userCount >= MAX_FD) {
@@ -145,6 +156,7 @@ void WebServer::DealListen_() {
             LOG_WARN("Clients is full!");
             return;
         }
+        // 把新的连接socket添加到epoll对象中
         AddClient_(fd, addr);
     } while(listenEvent_ & EPOLLET);
 }

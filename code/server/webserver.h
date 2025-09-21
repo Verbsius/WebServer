@@ -59,7 +59,7 @@ private:
     bool openLinger_;
     int timeoutMS_;  /* 毫秒MS */
     bool isClose_;
-    int listenFd_;
+    int listenFd_; // 监听socket
     char* srcDir_;
     
     uint32_t listenEvent_;

@@ -12,6 +12,7 @@ SqlConnPool::SqlConnPool() {
     freeCount_ = 0;
 }
 
+// c++11以后，局部静态变量的初始化是线程安全的
 SqlConnPool* SqlConnPool::Instance() {
     static SqlConnPool connPool;
     return &connPool;
